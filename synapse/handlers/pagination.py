@@ -145,6 +145,7 @@ class PaginationHandler:
         # Dict[`room_id`, List[`delete_id`]]
         self._delete_by_room: Dict[str, List[str]] = {}
         self._event_serializer = hs.get_event_client_serializer()
+        self._event_handler = hs.get_event_handler()
 
         self._retention_default_max_lifetime = (
             hs.config.retention.retention_default_max_lifetime
@@ -536,6 +537,8 @@ class PaginationHandler:
             if state_ids:
                 state_dict = await self.store.get_events(list(state_ids.values()))
                 state = state_dict.values()
+
+        await self._event_handler.bundle_aggregations(events)
 
         time_now = self.clock.time_msec()
 

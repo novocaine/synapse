@@ -660,8 +660,11 @@ class RoomEventServlet(RestServlet):
             # https://matrix.org/docs/spec/client_server/r0.5.0#get-matrix-client-r0-rooms-roomid-event-eventid
             raise SynapseError(404, "Event not found.", errcode=Codes.NOT_FOUND)
 
-        time_now = self.clock.time_msec()
         if event:
+            # Ensure there are bundled aggregations available.
+            await self.event_handler.bundle_aggregations_for_event(event)
+
+            time_now = self.clock.time_msec()
             event_dict = await self._event_serializer.serialize_event(event, time_now)
             return 200, event_dict
 

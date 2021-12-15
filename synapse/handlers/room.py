@@ -1106,6 +1106,7 @@ class RoomContextHandler:
         self.store = hs.get_datastore()
         self.storage = hs.get_storage()
         self.state_store = self.storage.state
+        self.event_handler = hs.get_event_handler()
 
     async def get_event_context(
         self,
@@ -1171,11 +1172,14 @@ class RoomContextHandler:
             results["events_after"] = await event_filter.filter(results["events_after"])
 
         results["events_before"] = await filter_evts(results["events_before"])
+        await self.event_handler.bundle_aggregations(results["events_before"])
         results["events_after"] = await filter_evts(results["events_after"])
+        await self.event_handler.bundle_aggregations(results["events_after"])
         # filter_evts can return a pruned event in case the user is allowed to see that
         # there's something there but not see the content, so use the event that's in
         # `filtered` rather than the event we retrieved from the datastore.
         results["event"] = filtered[0]
+        await self.event_handler.bundle_aggregations_for_event(results["event"])
 
         if results["events_after"]:
             last_event_id = results["events_after"][-1].event_id

@@ -109,6 +109,7 @@ class SyncRestServlet(RestServlet):
         self.presence_handler = hs.get_presence_handler()
         self._server_notices_sender = hs.get_server_notices_sender()
         self._event_serializer = hs.get_event_client_serializer()
+        self._event_handler = hs.get_event_handler()
 
     async def on_GET(self, request: SynapseRequest) -> Tuple[int, JsonDict]:
         # This will always be set by the time Twisted calls us.
@@ -548,6 +549,8 @@ class SyncRestServlet(RestServlet):
                 )
 
         serialized_state = await serialize(state_events)
+        if room.timeline.limited:
+            await self._event_handler.bundle_aggregations(timeline_events)
         serialized_timeline = await serialize(timeline_events)
 
         account_data = room.account_data
