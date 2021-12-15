@@ -198,6 +198,9 @@ class _EventInternalMetadata:
     txn_id: DictProperty[str] = DictProperty("txn_id")
     token_id: DictProperty[int] = DictProperty("token_id")
     historical: DictProperty[bool] = DictProperty("historical")
+    bundled_aggregations: DictProperty[Optional[Dict[str, Any]]] = DictProperty(
+        "bundled_aggregations"
+    )
 
     # XXX: These are set by StreamWorkerStore._set_before_and_after.
     # I'm pretty sure that these are never persisted to the database, so shouldn't
@@ -278,6 +281,10 @@ class _EventInternalMetadata:
         like push notifications.
         """
         return self._dict.get("historical", False)
+
+    def get_bundled_aggregations(self) -> Optional[Dict[str, Any]]:
+        """Get the calculated bundled aggregations."""
+        return self._dict.get("bundled_aggregations")
 
 
 class EventBase(metaclass=abc.ABCMeta):

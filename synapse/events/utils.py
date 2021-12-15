@@ -76,6 +76,8 @@ def prune_event(event: EventBase) -> EventBase:
 
     # Mark the event as redacted
     pruned_event.internal_metadata.redacted = True
+    # Redacted events do not have bundled aggregations.
+    pruned_event.internal_metadata.bundled_aggregations = None
 
     return pruned_event
 

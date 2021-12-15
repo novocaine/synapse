@@ -14,9 +14,11 @@
 
 import logging
 import random
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-from synapse.api.constants import EduTypes, EventTypes, Membership
+from frozendict import frozendict
+
+from synapse.api.constants import EduTypes, EventTypes, Membership, RelationTypes
 from synapse.api.errors import AuthError, SynapseError
 from synapse.events import EventBase
 from synapse.handlers.presence import format_user_presence_state
@@ -141,6 +143,9 @@ class EventHandler:
         self.store = hs.get_datastore()
         self.storage = hs.get_storage()
 
+        self._msc1849_enabled = hs.config.experimental.msc1849_enabled
+        self._msc3440_enabled = hs.config.experimental.msc3440_enabled
+
     async def get_event(
         self, user: UserID, room_id: Optional[str], event_id: str
     ) -> Optional[EventBase]:
@@ -174,3 +179,79 @@ class EventHandler:
             raise AuthError(403, "You don't have permission to access that event.")
 
         return event
+
+    async def bundle_aggregations_for_event(self, event: EventBase) -> None:
+        """Generate bundled aggregations and store in the event metadata.
+
+        Args:
+            event: The event to calculate bundled aggregations for.
+
+        """
+        # If bundled aggregations are disabled, nothing to do.
+        if not self._msc1849_enabled:
+            return
+
+        # If there's already bundled aggregations on this event, nothing to do.
+        if event.internal_metadata.get_bundled_aggregations() is not None:
+            return
+
+        # State events and redacted events do not get bundled aggregations.
+        if event.is_state() or event.internal_metadata.is_redacted():
+            return
+
+        # Do not bundle aggregations for an event which represents an edit or an
+        # annotation. It does not make sense for them to have related events.
+        relates_to = event.content.get("m.relates_to")
+        if isinstance(relates_to, (dict, frozendict)):
+            relation_type = relates_to.get("rel_type")
+            if relation_type in (RelationTypes.ANNOTATION, RelationTypes.REPLACE):
+                event.internal_metadata.bundled_aggregations = {}
+                return
+
+        event_id = event.event_id
+        room_id = event.room_id
+
+        # The bundled aggregations to include, a mapping of relation type to a
+        # type-specific value. Some types include the direct return type here
+        # while others need more processing during serialization.
+        aggregations: Dict[str, Any] = {}
+
+        annotations = await self.store.get_aggregation_groups_for_event(
+            event_id, room_id
+        )
+        if annotations.chunk:
+            aggregations[RelationTypes.ANNOTATION] = annotations.to_dict()
+
+        references = await self.store.get_relations_for_event(
+            event_id, room_id, RelationTypes.REFERENCE, direction="f"
+        )
+        if references.chunk:
+            aggregations[RelationTypes.REFERENCE] = references.to_dict()
+
+        edit = None
+        if event.type == EventTypes.Message:
+            edit = await self.store.get_applicable_edit(event_id, room_id)
+
+        if edit:
+            aggregations[RelationTypes.REPLACE] = edit
+
+        # If this event is the start of a thread, include a summary of the replies.
+        if self._msc3440_enabled:
+            (
+                thread_count,
+                latest_thread_event,
+            ) = await self.store.get_thread_summary(event_id, room_id)
+            if latest_thread_event:
+                aggregations[RelationTypes.THREAD] = {
+                    # Don't bundle aggregations as this could recurse forever.
+                    "latest_event": latest_thread_event,
+                    "count": thread_count,
+                }
+
+        # Store the bundled aggregations in the event metadata for later use.
+        event.internal_metadata.bundled_aggregations = aggregations
+
+    async def bundle_aggregations(self, events: Iterable[EventBase]) -> None:
+        # TODO Parallelize.
+        for event in events:
+            await self.bundle_aggregations_for_event(event)
