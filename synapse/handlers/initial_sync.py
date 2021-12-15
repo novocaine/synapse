@@ -170,7 +170,7 @@ class InitialSyncHandler:
                 d["inviter"] = event.sender
 
                 invite_event = await self.store.get_event(event.event_id)
-                d["invite"] = await self._event_serializer.serialize_event(
+                d["invite"] = self._event_serializer.serialize_event(
                     invite_event,
                     time_now,
                     # Don't bundle aggregations as this is a deprecated API.
@@ -224,7 +224,7 @@ class InitialSyncHandler:
 
                 d["messages"] = {
                     "chunk": (
-                        await self._event_serializer.serialize_events(
+                        self._event_serializer.serialize_events(
                             messages,
                             time_now=time_now,
                             # Don't bundle aggregations as this is a deprecated API.
@@ -236,7 +236,7 @@ class InitialSyncHandler:
                     "end": await end_token.to_string(self.store),
                 }
 
-                d["state"] = await self._event_serializer.serialize_events(
+                d["state"] = self._event_serializer.serialize_events(
                     current_state.values(),
                     time_now=time_now,
                     # Don't bundle aggregations as this is a deprecated API.
@@ -382,7 +382,7 @@ class InitialSyncHandler:
             "messages": {
                 "chunk": (
                     # Don't bundle aggregations as this is a deprecated API.
-                    await self._event_serializer.serialize_events(
+                    self._event_serializer.serialize_events(
                         messages, time_now, bundle_aggregations=False
                     )
                 ),
@@ -391,7 +391,7 @@ class InitialSyncHandler:
             },
             "state": (
                 # Don't bundle aggregations as this is a deprecated API.
-                await self._event_serializer.serialize_events(
+                self._event_serializer.serialize_events(
                     room_state.values(), time_now, bundle_aggregations=False
                 )
             ),
@@ -412,7 +412,7 @@ class InitialSyncHandler:
         # TODO: These concurrently
         time_now = self.clock.time_msec()
         # Don't bundle aggregations as this is a deprecated API.
-        state = await self._event_serializer.serialize_events(
+        state = self._event_serializer.serialize_events(
             current_state.values(), time_now, bundle_aggregations=False
         )
 
@@ -488,7 +488,7 @@ class InitialSyncHandler:
             "messages": {
                 "chunk": (
                     # Don't bundle aggregations as this is a deprecated API.
-                    await self._event_serializer.serialize_events(
+                    self._event_serializer.serialize_events(
                         messages, time_now, bundle_aggregations=False
                     )
                 ),

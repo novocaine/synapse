@@ -17,7 +17,6 @@ from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
     Any,
-    Awaitable,
     Callable,
     Dict,
     Iterable,
@@ -392,7 +391,7 @@ class SyncRestServlet(RestServlet):
         """
         invited = {}
         for room in rooms:
-            invite = await self._event_serializer.serialize_event(
+            invite = self._event_serializer.serialize_event(
                 room.invite,
                 time_now,
                 token_id=token_id,
@@ -428,7 +427,7 @@ class SyncRestServlet(RestServlet):
         """
         knocked = {}
         for room in rooms:
-            knock = await self._event_serializer.serialize_event(
+            knock = self._event_serializer.serialize_event(
                 room.knock,
                 time_now,
                 token_id=token_id,
@@ -520,7 +519,7 @@ class SyncRestServlet(RestServlet):
             The room, encoded in our response format
         """
 
-        def serialize(events: Iterable[EventBase]) -> Awaitable[List[JsonDict]]:
+        def serialize(events: Iterable[EventBase]) -> List[JsonDict]:
             return self._event_serializer.serialize_events(
                 events,
                 time_now=time_now,
@@ -548,10 +547,10 @@ class SyncRestServlet(RestServlet):
                     event.room_id,
                 )
 
-        serialized_state = await serialize(state_events)
+        serialized_state = serialize(state_events)
         if room.timeline.limited:
             await self._event_handler.bundle_aggregations(timeline_events)
-        serialized_timeline = await serialize(timeline_events)
+        serialized_timeline = serialize(timeline_events)
 
         account_data = room.account_data
 

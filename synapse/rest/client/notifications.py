@@ -72,7 +72,7 @@ class NotificationsServlet(RestServlet):
                 "actions": pa["actions"],
                 "ts": pa["received_ts"],
                 "event": (
-                    await self._event_serializer.serialize_event(
+                    self._event_serializer.serialize_event(
                         notif_events[pa["event_id"]],
                         self.clock.time_msec(),
                         bundle_aggregations=False,

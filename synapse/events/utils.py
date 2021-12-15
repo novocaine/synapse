@@ -22,7 +22,6 @@ from synapse.api.constants import EventContentFields, EventTypes, RelationTypes
 from synapse.api.errors import Codes, SynapseError
 from synapse.api.room_versions import RoomVersion
 from synapse.types import JsonDict
-from synapse.util.async_helpers import yieldable_gather_results
 from synapse.util.frozenutils import unfreeze
 
 from . import EventBase
@@ -374,7 +373,7 @@ class EventClientSerializer:
     clients.
     """
 
-    async def serialize_event(
+    def serialize_event(
         self,
         event: Union[JsonDict, EventBase],
         time_now: int,
@@ -403,11 +402,11 @@ class EventClientSerializer:
 
         # Check if there are any bundled aggregations to include with the event.
         if bundle_aggregations and event.internal_metadata.get_bundled_aggregations():
-            await self._injected_bundled_aggregations(event, time_now, serialized_event)
+            self._injected_bundled_aggregations(event, time_now, serialized_event)
 
         return serialized_event
 
-    async def _injected_bundled_aggregations(
+    def _injected_bundled_aggregations(
         self, event: EventBase, time_now: int, serialized_event: JsonDict
     ) -> None:
         """Potentially injects bundled aggregations into the unsigned portion of the serialized event.
@@ -455,16 +454,14 @@ class EventClientSerializer:
             latest_thread_event = aggregations[RelationTypes.THREAD]["latest_event"]
 
             # Don't bundle aggregations as this could recurse forever.
-            aggregations[RelationTypes.THREAD][
-                "latest_event"
-            ] = await self.serialize_event(
+            aggregations[RelationTypes.THREAD]["latest_event"] = self.serialize_event(
                 latest_thread_event, time_now, bundle_aggregations=False
             )
 
         # Include the bundled aggregations in the event.
         serialized_event["unsigned"].setdefault("m.relations", {}).update(aggregations)
 
-    async def serialize_events(
+    def serialize_events(
         self, events: Iterable[Union[JsonDict, EventBase]], time_now: int, **kwargs: Any
     ) -> List[JsonDict]:
         """Serializes multiple events.
@@ -477,9 +474,9 @@ class EventClientSerializer:
         Returns:
             The list of serialized events
         """
-        return await yieldable_gather_results(
-            self.serialize_event, events, time_now=time_now, **kwargs
-        )
+        return [
+            self.serialize_event(event, time_now=time_now, **kwargs) for event in events
+        ]
 
 
 def copy_power_levels_contents(
