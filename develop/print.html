@@ -376,7 +376,7 @@ xbps-install -S synapse
 <p>Synapse can be installed via FreeBSD Ports or Packages contributed by Brendan Molloy from:</p>
 <ul>
 <li>Ports: <code>cd /usr/ports/net-im/py-matrix-synapse &amp;&amp; make install clean</code></li>
-<li>Packages: <code>pkg install py37-matrix-synapse</code></li>
+<li>Packages: <code>pkg install py38-matrix-synapse</code></li>
 </ul>
 <h4 id="openbsd"><a class="header" href="#openbsd">OpenBSD</a></h4>
 <p>As of OpenBSD 6.7 Synapse is available as a pre-compiled binary. The filesystem
@@ -918,7 +918,7 @@ to proxied traffic.)</p>
 
     server_name matrix.example.com;
 
-    location ~* ^(\/_matrix|\/_synapse\/client) {
+    location ~ ^(/_matrix|/_synapse/client) {
         # note: do not add a path (even a single /) after the port in `proxy_pass`,
         # otherwise nginx will canonicalise the URI and cause signature verification
         # errors.
@@ -1180,8 +1180,8 @@ TURN server.</p>
 <p>The following sections describe how to install <a href="https://github.com/coturn/coturn">coturn</a> (which implements the TURN REST API) and integrate it with synapse.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <p>For TURN relaying with <code>coturn</code> to work, it must be hosted on a server/endpoint with a public IP.</p>
-<p>Hosting TURN behind a NAT (even with appropriate port forwarding) is known to cause issues
-and to often not work.</p>
+<p>Hosting TURN behind NAT requires port forwaring and for the NAT gateway to have a public IP.
+However, even with appropriate configuration, NAT is known to cause issues and to often not work.</p>
 <h2 id="coturn-setup"><a class="header" href="#coturn-setup"><code>coturn</code> setup</a></h2>
 <h3 id="initial-installation"><a class="header" href="#initial-installation">Initial installation</a></h3>
 <p>The TURN daemon <code>coturn</code> is available from a variety of sources such as native package managers, or installation from source.</p>
@@ -1250,7 +1250,23 @@ denied-peer-ip=10.0.0.0-10.255.255.255
 denied-peer-ip=192.168.0.0-192.168.255.255
 denied-peer-ip=172.16.0.0-172.31.255.255
 
+# recommended additional local peers to block, to mitigate external access to internal services.
+# https://www.rtcsec.com/article/slack-webrtc-turn-compromise-and-bug-bounty/#how-to-fix-an-open-turn-relay-to-address-this-vulnerability
+no-multicast-peers
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.0.2.0-192.0.2.255
+denied-peer-ip=192.88.99.0-192.88.99.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=198.51.100.0-198.51.100.255
+denied-peer-ip=203.0.113.0-203.0.113.255
+denied-peer-ip=240.0.0.0-255.255.255.255
+
 # special case the turn server itself so that client-&gt;TURN-&gt;TURN-&gt;client flows work
+# this should be one of the turn server's listening IPs
 allowed-peer-ip=10.0.0.1
 
 # consider whether you want to limit the quota of relayed streams per user (or total) to avoid risk of DoS.
@@ -1268,7 +1284,7 @@ cert=/path/to/fullchain.pem
 # TLS private key file
 pkey=/path/to/privkey.pem
 </code></pre>
-<p>In this case, replace the <code>turn:</code> schemes in the <code>turn_uri</code> settings below
+<p>In this case, replace the <code>turn:</code> schemes in the <code>turn_uris</code> settings below
 with <code>turns:</code>.</p>
 <p>We recommend that you only try to set up TLS/DTLS once you have set up a
 basic installation and got it working.</p>
@@ -1280,16 +1296,24 @@ traffic (remember to allow both TCP and UDP traffic), and ports 49152-65535
 for the UDP relay.)</p>
 </li>
 <li>
-<p>We do not recommend running a TURN server behind NAT, and are not aware of
-anyone doing so successfully.</p>
-<p>If you want to try it anyway, you will at least need to tell coturn its
-external IP address:</p>
-<pre><code>external-ip=192.88.99.1
+<p>If your TURN server is behind NAT, the NAT gateway must have an external,
+publicly-reachable IP address. You must configure coturn to advertise that
+address to connecting clients:</p>
+<pre><code>external-ip=EXTERNAL_NAT_IPv4_ADDRESS
 </code></pre>
-<p>... and your NAT gateway must forward all of the relayed ports directly
-(eg, port 56789 on the external IP must be always be forwarded to port
-56789 on the internal IP).</p>
-<p>If you get this working, let us know!</p>
+<p>You may optionally limit the TURN server to listen only on the local
+address that is mapped by NAT to the external address:</p>
+<pre><code>listening-ip=INTERNAL_TURNSERVER_IPv4_ADDRESS
+</code></pre>
+<p>If your NAT gateway is reachable over both IPv4 and IPv6, you may
+configure coturn to advertise each available address:</p>
+<pre><code>external-ip=EXTERNAL_NAT_IPv4_ADDRESS
+external-ip=EXTERNAL_NAT_IPv6_ADDRESS
+</code></pre>
+<p>When advertising an external IPv6 address, ensure that the firewall and
+network settings of the system running your TURN server are configured to
+accept IPv6 traffic, and that the TURN server is listening on the local
+IPv6 address that is mapped by NAT to the external IPv6 address.</p>
 </li>
 <li>
 <p>(Re)start the turn server:</p>
@@ -1357,10 +1381,6 @@ connecting&quot;. Unfortunately, troubleshooting this can be tricky.</p>
 <p>Here are a few things to try:</p>
 <ul>
 <li>
-<p>Check that your TURN server is not behind NAT. As above, we're not aware of
-anyone who has successfully set this up.</p>
-</li>
-<li>
 <p>Check that you have opened your firewall to allow TCP and UDP traffic to the
 TURN ports (normally 3478 and 5349).</p>
 </li>
@@ -1376,6 +1396,23 @@ defined by
 <a href="https://tools.ietf.org/html/draft-ietf-rtcweb-ip-handling-12"><code>draft-ietf-rtcweb-ip-handling</code></a>).</p>
 <p>Try removing any AAAA records for your TURN server, so that it is only
 reachable over IPv4.</p>
+</li>
+<li>
+<p>If your TURN server is behind NAT:</p>
+<ul>
+<li>
+<p>double-check that your NAT gateway is correctly forwarding all TURN
+ports (normally 3478 &amp; 5349 for TCP &amp; UDP TURN traffic, and 49152-65535 for the UDP
+relay) to the NAT-internal address of your TURN server. If advertising
+both IPv4 and IPv6 external addresses via the <code>external-ip</code> option, ensure
+that the NAT is forwarding both IPv4 and IPv6 traffic to the IPv4 and IPv6
+internal addresses of your TURN server. When in doubt, remove AAAA records
+for your TURN server and specify only an IPv4 address as your <code>external-ip</code>.</p>
+</li>
+<li>
+<p>ensure that your TURN server uses the NAT gateway as its default route.</p>
+</li>
+</ul>
 </li>
 <li>
 <p>Enable more verbose logging in coturn via the <code>verbose</code> setting:</p>
@@ -1585,6 +1622,12 @@ dpkg -i matrix-synapse-py3_1.3.0+stretch1_amd64.deb
 </code></pre>
 </li>
 </ul>
+<h1 id="upgrading-to-v1500"><a class="header" href="#upgrading-to-v1500">Upgrading to v1.50.0</a></h1>
+<h2 id="dropping-support-for-old-python-and-postgres-versions"><a class="header" href="#dropping-support-for-old-python-and-postgres-versions">Dropping support for old Python and Postgres versions</a></h2>
+<p>In line with our <a href="deprecation_policy.html">deprecation policy</a>,
+we've dropped support for Python 3.6 and PostgreSQL 9.6, as they are no
+longer supported upstream.</p>
+<p>This release of Synapse requires Python 3.7+ and PostgreSQL 10+.</p>
 <h1 id="upgrading-to-v1470"><a class="header" href="#upgrading-to-v1470">Upgrading to v1.47.0</a></h1>
 <h2 id="removal-of-old-room-admin-api"><a class="header" href="#removal-of-old-room-admin-api">Removal of old Room Admin API</a></h2>
 <p>The following admin APIs were deprecated in <a href="https://github.com/matrix-org/synapse/blob/v1.34.0/CHANGES.md#deprecations-and-removals">Synapse 1.34</a>
@@ -3108,7 +3151,7 @@ a fresh config using Synapse by following the instructions in
 
 # Server admins can expand Synapse's functionality with external modules.
 #
-# See https://matrix-org.github.io/synapse/latest/modules.html for more
+# See https://matrix-org.github.io/synapse/latest/modules/index.html for more
 # documentation on how to configure or create custom modules for Synapse.
 #
 modules:
@@ -4559,6 +4602,7 @@ room_prejoin_state:
    # - m.room.encryption
    # - m.room.name
    # - m.room.create
+   # - m.room.topic
    #
    # Uncomment the following to disable these defaults (so that only the event
    # types listed in 'additional_event_types' are shared). Defaults to 'false'.
@@ -6847,7 +6891,7 @@ comment these options out and use those specified by the module instead.</p>
 <h3 id="building-a-custom-openid-mapping-provider"><a class="header" href="#building-a-custom-openid-mapping-provider">Building a Custom OpenID Mapping Provider</a></h3>
 <p>A custom mapping provider must specify the following methods:</p>
 <ul>
-<li><code>__init__(self, parsed_config)</code>
+<li><code>def __init__(self, parsed_config)</code>
 <ul>
 <li>Arguments:
 <ul>
@@ -6858,7 +6902,7 @@ the module here.</li>
 </li>
 </ul>
 </li>
-<li><code>parse_config(config)</code>
+<li><code>def parse_config(config)</code>
 <ul>
 <li>This method should have the <code>@staticmethod</code> decoration.</li>
 <li>Arguments:
@@ -6873,7 +6917,7 @@ any option values they need here.</li>
 <code>__init__</code> method during construction.</li>
 </ul>
 </li>
-<li><code>get_remote_user_id(self, userinfo)</code>
+<li><code>def get_remote_user_id(self, userinfo)</code>
 <ul>
 <li>Arguments:
 <ul>
@@ -6885,7 +6929,7 @@ information from.</li>
 for the user. Commonly the <code>sub</code> claim of the response.</li>
 </ul>
 </li>
-<li><code>map_user_attributes(self, userinfo, token, failures)</code>
+<li><code>async def map_user_attributes(self, userinfo, token, failures)</code>
 <ul>
 <li>This method must be async.</li>
 <li>Arguments:
@@ -6916,7 +6960,7 @@ remote user ID (see <code>get_remote_user_id</code>) it cannot be updated.</li>
 </li>
 </ul>
 </li>
-<li><code>get_extra_attributes(self, userinfo, token)</code>
+<li><code>async def get_extra_attributes(self, userinfo, token)</code>
 <ul>
 <li>
 <p>This method must be async.</p>
@@ -6954,7 +6998,7 @@ comment these options out and use those specified by the module instead.</p>
 <h3 id="building-a-custom-saml-mapping-provider"><a class="header" href="#building-a-custom-saml-mapping-provider">Building a Custom SAML Mapping Provider</a></h3>
 <p>A custom mapping provider must specify the following methods:</p>
 <ul>
-<li><code>__init__(self, parsed_config, module_api)</code>
+<li><code>def __init__(self, parsed_config, module_api)</code>
 <ul>
 <li>Arguments:
 <ul>
@@ -6967,9 +7011,9 @@ stable API available for extension modules.</li>
 </li>
 </ul>
 </li>
-<li><code>parse_config(config)</code>
+<li><code>def parse_config(config)</code>
 <ul>
-<li>This method should have the <code>@staticmethod</code> decoration.</li>
+<li><strong>This method should have the <code>@staticmethod</code> decoration.</strong></li>
 <li>Arguments:
 <ul>
 <li><code>config</code> - A <code>dict</code> representing the parsed content of the
@@ -6982,9 +7026,9 @@ any option values they need here.</li>
 <code>__init__</code> method during construction.</li>
 </ul>
 </li>
-<li><code>get_saml_attributes(config)</code>
+<li><code>def get_saml_attributes(config)</code>
 <ul>
-<li>This method should have the <code>@staticmethod</code> decoration.</li>
+<li><strong>This method should have the <code>@staticmethod</code> decoration.</strong></li>
 <li>Arguments:
 <ul>
 <li><code>config</code> - A object resulting from a call to <code>parse_config</code>.</li>
@@ -6996,7 +7040,7 @@ the second set consists of those attributes which can be used if available,
 but are not necessary.</li>
 </ul>
 </li>
-<li><code>get_remote_user_id(self, saml_response, client_redirect_url)</code>
+<li><code>def get_remote_user_id(self, saml_response, client_redirect_url)</code>
 <ul>
 <li>Arguments:
 <ul>
@@ -7010,7 +7054,7 @@ redirected to.</li>
 for the user. Commonly the <code>uid</code> claim of the response.</li>
 </ul>
 </li>
-<li><code>saml_response_to_user_attributes(self, saml_response, failures, client_redirect_url)</code>
+<li><code>def saml_response_to_user_attributes(self, saml_response, failures, client_redirect_url)</code>
 <ul>
 <li>
 <p>Arguments:</p>
@@ -11509,6 +11553,75 @@ member are returned.</p>
 <ul>
 <li><code>joined_rooms</code> - An array of <code>room_id</code>.</li>
 <li><code>total</code> - Number of rooms.</li>
+</ul>
+<h2 id="account-data"><a class="header" href="#account-data">Account Data</a></h2>
+<p>Gets information about account data for a specific <code>user_id</code>.</p>
+<p>The API is:</p>
+<pre><code>GET /_synapse/admin/v1/users/&lt;user_id&gt;/accountdata
+</code></pre>
+<p>A response body like the following is returned:</p>
+<pre><code class="language-json">{
+    &quot;account_data&quot;: {
+        &quot;global&quot;: {
+            &quot;m.secret_storage.key.LmIGHTg5W&quot;: {
+                &quot;algorithm&quot;: &quot;m.secret_storage.v1.aes-hmac-sha2&quot;,
+                &quot;iv&quot;: &quot;fwjNZatxg==&quot;,
+                &quot;mac&quot;: &quot;eWh9kNnLWZUNOgnc=&quot;
+            },
+            &quot;im.vector.hide_profile&quot;: {
+                &quot;hide_profile&quot;: true
+            },
+            &quot;org.matrix.preview_urls&quot;: {
+                &quot;disable&quot;: false
+            },
+            &quot;im.vector.riot.breadcrumb_rooms&quot;: {
+                &quot;rooms&quot;: [
+                    &quot;!LxcBDAsDUVAfJDEo:matrix.org&quot;,
+                    &quot;!MAhRxqasbItjOqxu:matrix.org&quot;
+                ]
+            },
+            &quot;m.accepted_terms&quot;: {
+                &quot;accepted&quot;: [
+                    &quot;https://example.org/somewhere/privacy-1.2-en.html&quot;,
+                    &quot;https://example.org/somewhere/terms-2.0-en.html&quot;
+                ]
+            },
+            &quot;im.vector.setting.breadcrumbs&quot;: {
+                &quot;recent_rooms&quot;: [
+                    &quot;!MAhRxqasbItqxuEt:matrix.org&quot;,
+                    &quot;!ZtSaPCawyWtxiImy:matrix.org&quot;
+                ]
+            }
+        },
+        &quot;rooms&quot;: {
+            &quot;!GUdfZSHUJibpiVqHYd:matrix.org&quot;: {
+                &quot;m.fully_read&quot;: {
+                    &quot;event_id&quot;: &quot;$156334540fYIhZ:matrix.org&quot;
+                }
+            },
+            &quot;!tOZwOOiqwCYQkLhV:matrix.org&quot;: {
+                &quot;m.fully_read&quot;: {
+                    &quot;event_id&quot;: &quot;$xjsIyp4_NaVl2yPvIZs_k1Jl8tsC_Sp23wjqXPno&quot;
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p><strong>Parameters</strong></p>
+<p>The following parameters should be set in the URL:</p>
+<ul>
+<li><code>user_id</code> - fully qualified: for example, <code>@user:server.com</code>.</li>
+</ul>
+<p><strong>Response</strong></p>
+<p>The following fields are returned in the JSON response body:</p>
+<ul>
+<li><code>account_data</code> - A map containing the account data for the user
+<ul>
+<li><code>global</code> - A map containing the global account data for the user</li>
+<li><code>rooms</code> - A map containing the account data per room for the user</li>
+</ul>
+</li>
 </ul>
 <h2 id="user-media"><a class="header" href="#user-media">User media</a></h2>
 <h3 id="list-media-uploaded-by-a-user"><a class="header" href="#list-media-uploaded-by-a-user">List media uploaded by a user</a></h3>
